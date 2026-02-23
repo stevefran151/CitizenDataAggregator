@@ -1,0 +1,20 @@
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+scikit-learn
+numpy
+google-generativeai
+python-multipart
+python-dotenv
+scrapy
+pandas
+llama-index
+llama-index-llms-gemini
+llama-index-embeddings-google
+networkx
+matplotlib
+pypdf
+livekit-server-sdk
+python-multipart
+# livekit-agents # Optional if running python agent worker
