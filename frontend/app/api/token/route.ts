@@ -1,0 +1,29 @@
+
+import { AccessToken } from 'livekit-server-sdk';
+import { NextRequest, NextResponse } from 'next/server';
+
+export async function GET(request: NextRequest) {
+    const room = request.nextUrl.searchParams.get('room') || 'default-room';
+    const participantName = request.nextUrl.searchParams.get('username') || 'user-' + Math.floor(Math.random() * 100);
+
+    const apiKey = process.env.LIVEKIT_API_KEY;
+    const apiSecret = process.env.LIVEKIT_API_SECRET;
+    const wsUrl = process.env.LIVEKIT_URL;
+
+    if (!apiKey || !apiSecret || !wsUrl) {
+        return NextResponse.json(
+            { error: 'Server misconfigured. Missing LiveKit credentials.' },
+            { status: 500 }
+        );
+    }
+
+    const at = new AccessToken(apiKey, apiSecret, {
+        identity: participantName,
+    });
+    at.addGrant({ room: room, roomJoin: true, canPublish: true, canSubscribe: true });
+
+    return NextResponse.json({
+        token: await at.toJwt(),
+        url: wsUrl,
+    });
+}
