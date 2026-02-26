@@ -24,13 +24,16 @@ class Observation(Base):
     lat = Column(Float)
     long = Column(Float)
     is_valid = Column(Boolean, default=True)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, default=datetime.now)
     source = Column(String, default="manual") # manual or pdf_extraction
     details = Column(JSON, nullable=True) # Check validity with World Geo
     
     # Validation fields
     outlier_score = Column(Float, nullable=True)
     validation_report = Column(JSON, nullable=True) # Stores reference values from external sources
+    needs_review = Column(Boolean, default=False)
+    validation_status = Column(String, default="auto") # auto, pending, human_verified, rejected
+    is_expert = Column(Boolean, default=False)
 
     @property
     def quality_info(self):

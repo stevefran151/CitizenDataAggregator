@@ -6,12 +6,31 @@ class QualityClassifier:
             return QualityClassifier._classify_air(value)
         elif "water" in type:
             return QualityClassifier._classify_water(value)
+        elif "bio" in type:
+            return QualityClassifier._classify_biodiversity(value)
         else:
             return {
                 "quality_label": "Unknown",
                 "color_code": "#808080", # Grey
                 "health_msg": "No specific health advice available."
             }
+
+    @staticmethod
+    def _classify_biodiversity(value: float):
+        # Biodiversity Index or Health (0-100 scale or 0-1)
+        # If user passed a small float (0-1), scale it to 100 for this logic
+        v = value * 100 if value <= 1.0 else value
+        
+        if v >= 80:
+            return {"quality_label": "Pristine", "color_code": "#00E400", "health_msg": "Ecosystem is thriving with high species richness and minimal disturbance."}
+        elif v >= 60:
+            return {"quality_label": "Thriving", "color_code": "#92D050", "health_msg": "System is stable and demonstrating strong resilience."}
+        elif v >= 40:
+            return {"quality_label": "Fair", "color_code": "#FFFF00", "health_msg": "Ecological balance is maintained but vulnerable to external stress."}
+        elif v >= 20:
+            return {"quality_label": "Degraded", "color_code": "#FF7E00", "health_msg": "Signs ofhabitat loss or invasive species dominance detected."}
+        else:
+            return {"quality_label": "Critical", "color_code": "#FF0000", "health_msg": "Severe habitat destruction or local extinction event in progress."}
 
     @staticmethod
     def _classify_air(value: float):

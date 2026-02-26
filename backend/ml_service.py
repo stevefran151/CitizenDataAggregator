@@ -126,49 +126,80 @@ detector = AdvancedOutlierDetector()
 
 import validation_service
 
-def validate_observation(value: float, lat: float=0.0, long: float=0.0, type_cat: str="air", details: dict=None):
+def validate_observation(value: float, lat: float=0.0, long: float=0.0, type_cat: str="air", details: dict=None, is_expert: bool=False):
     """
-    Returns (is_valid, validation_report)
+    Returns (is_valid, validation_report, needs_review)
     """
     report = {
         "satellite_value": None,
         "standards": {},
         "ml_status": "Passed",
-        "gx_validation": "Not Required"
+        "trust_level": "Expert" if is_expert else "Standard"
     }
-    
-    # 1. Range Check (Using Great Expectations)
+
+    # 1. Range Check (Simplified Manual Validation)
     if details:
-        try:
-            import gx_service
-            is_gx_valid, gx_report = gx_service.gx_validator.validate_observation_details(type_cat, details)
-            report["standards"] = gx_report
-            report["gx_validation"] = "Passed" if is_gx_valid else "Failed"
-            if not is_gx_valid:
-                print(f"GX Validation Failed for {type_cat}")
-                return False, report
-        except ImportError:
-            # Fallback to manual validation if GX is not installed yet
-            print("Great Expectations not found, falling back to manual validation.")
-            is_range_valid, msg, std_report = validation_service.validator.validate_ranges(type_cat, details)
-            report["standards"] = std_report
-            report["gx_validation"] = "Fallback (Manual)"
-            if not is_range_valid:
-                return False, report
+        is_range_valid, msg, std_report = validation_service.validator.validate_ranges(type_cat, details)
+        report["standards"] = std_report
+        # Experts still shouldn't post physically impossible values
+        if not is_range_valid:
+            return False, report, False
+
 
     # 2. Live External Check
     is_live_valid, live_msg, ref_val = validation_service.validator.check_live_data(type_cat, lat, long, details or {"value": value})
     report["satellite_value"] = ref_val
     if not is_live_valid:
-        print(f"Validation Failed: {live_msg}")
-        return False, report
+        # If live check fails (e.g. 5x diff from satellite), experts are flagged for review instead of auto-rejection
+        if is_expert:
+            is_justified, reason, event_type = validation_service.validator.news_validator.verify_trend_from_news(type_cat, lat, long, value)
+            if is_justified:
+                report["ml_status"] = f"Satellite Conflict justified by News: {event_type}"
+                report["news_justification"] = reason
+            else:
+                report["ml_status"] = "Live check conflict (Expert) - No News Support"
+            return True, report, True
+        else:
+            return False, report, False
 
     # 3. ML Check
     is_outlier = detector.check_outlier(value, lat, long)
-    if is_outlier:
-        report["ml_status"] = "Outlier Detected"
     
-    return not is_outlier, report
+    # 4. Hybrid Trust Logic
+    needs_review = False
+    is_valid = not is_outlier
+
+    if is_expert:
+        # We trust experts more: even if ML says outlier, we check news for trends
+        if is_outlier:
+            is_justified, reason, event_type = validation_service.validator.news_validator.verify_trend_from_news(type_cat, lat, long, value)
+            
+            if is_justified:
+                is_valid = True
+                needs_review = True # Still flag for review but with news justification
+                report["ml_status"] = f"Verified Trend: {event_type}"
+                report["news_justification"] = reason
+            else:
+                is_valid = True
+                needs_review = True
+                report["ml_status"] = "Potential New Trend (Expert Outlier - No News Match)"
+        
+        # If no satellite data, expert data is considered "Valid" but flagged for meta-verification
+        if ref_val is None:
+            needs_review = True
+            report["hitl_reason"] = "Expert Discovery: Verifying new region patterns"
+    else:
+        # Standard user logic: anomalies are rejected or flagged heavily
+        if is_outlier:
+            report["ml_status"] = "Outlier Detected (Standard User)"
+            is_valid = False
+            # We still might want to review it if it's "close" but for MVP we reject
+        
+        if ref_val is None:
+            needs_review = True
+            report["hitl_reason"] = "Unverified Source: No external baseline for this region"
+
+    return is_valid, report, needs_review
 
 def retrain_models(observations):
     """

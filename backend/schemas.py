@@ -8,9 +8,10 @@ class ObservationBase(BaseModel):
     lat: float
     long: float
     details: Optional[dict] = None # Full parameters (e.g. {ph: 7, do: 5})
+    is_expert: bool = False
 
 class ObservationCreate(ObservationBase):
-    pass
+    expert_token: Optional[str] = None
 
 class Observation(ObservationBase):
     id: int
@@ -18,6 +19,9 @@ class Observation(ObservationBase):
     timestamp: datetime
     source: str
     outlier_score: Optional[float]
+    needs_review: bool
+    validation_status: str
+    is_expert: bool
 
     # Computed fields
     quality_label: Optional[str]

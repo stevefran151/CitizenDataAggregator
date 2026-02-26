@@ -4,7 +4,6 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
-import VoiceAgent from "@/components/voice-agent";
 
 interface Observation {
     id: number;
@@ -58,14 +57,13 @@ export default function ChatInterface({ observation }: { observation?: Observati
         <div className="flex flex-col h-full max-w-4xl mx-auto w-full gap-4">
             <div className="flex justify-between items-center">
                 <h3 className="font-semibold text-lg">AI Assistant</h3>
-                <VoiceAgent />
             </div>
             {observation && (
                 <div className="bg-blue-50 p-2 rounded mb-4 text-xs text-blue-800 border border-blue-100">
                     Talking about: <span className="font-bold">{observation.type}</span> ({observation.value}) at {observation.lat.toFixed(2)}, {observation.long.toFixed(2)}
                 </div>
             )}
-            <div className="flex-grow bg-gray-50 rounded-xl p-4 overflow-y-auto mb-4 border border-gray-100 min-h-[300px] space-y-3">
+            <div className="bg-gray-50 rounded-xl p-4 overflow-y-auto mb-4 border border-gray-100 space-y-3 text-center">
                 {messages.length === 0 && (
                     <div className="text-gray-400 italic text-center mt-10">
                         <p>Hello! I can help you analyze environmental data.</p>
@@ -102,3 +100,4 @@ export default function ChatInterface({ observation }: { observation?: Observati
         </div>
     );
 }
+

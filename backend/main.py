@@ -34,13 +34,30 @@ def get_db():
 @app.post("/api/observe", response_model=schemas.Observation)
 def create_observation(observation: schemas.ObservationCreate, db: Session = Depends(get_db)):
     try:
+        # SECURITY: Verify Expert Status
+        is_expert_verified = False
+        if observation.is_expert:
+            expert_secret = os.getenv("EXPERT_TOKEN", "mechovate_expert_secret_2024")
+            if observation.expert_token != expert_secret:
+                # Log spoof attempt
+                print(f"SECURITY WARNING: Unauthorized expert submission attempt for {observation.type} at {observation.lat}, {observation.long}")
+                # Option A: Strict Rejection
+                raise HTTPException(status_code=401, detail="Unauthorized: Invalid Expert Credentials")
+                
+                # Option B: Downgrade (Silent correction) - uncomment below and comment out above if preferred
+                # observation.is_expert = False 
+                # print("Downgraded to Standard Citizen due to missing/invalid token.")
+            else:
+                is_expert_verified = True
+        
         # ML & World Geo Validation
-        is_valid, validation_report = ml_service.validate_observation(
+        is_valid, validation_report, needs_review = ml_service.validate_observation(
             observation.value, 
             observation.lat, 
             observation.long,
             type_cat=observation.type,
-            details=observation.details
+            details=observation.details,
+            is_expert=observation.is_expert
         )
         
         # Create DB object
@@ -52,7 +69,10 @@ def create_observation(observation: schemas.ObservationCreate, db: Session = Dep
             is_valid=is_valid,
             details=observation.details,
             validation_report=validation_report,
-            outlier_score=0.0 if is_valid else 1.0 
+            outlier_score=0.0 if is_valid else 1.0,
+            needs_review=needs_review,
+            validation_status="pending" if needs_review else ("auto" if is_valid else "rejected"),
+            is_expert=observation.is_expert
         )
         db.add(db_observation)
         db.commit()
@@ -76,16 +96,24 @@ def read_observations(skip: int = 0, limit: int = 100, db: Session = Depends(get
     return db.query(models.Observation).offset(skip).limit(limit).all()
 
 @app.put("/api/observations/{observation_id}/validate")
-def validate_observation_manual(observation_id: int, is_valid: bool, db: Session = Depends(get_db)):
+def validate_observation_manual(observation_id: int, is_valid: bool, expert_token: str, db: Session = Depends(get_db)):
+    # SECURITY: Verify Expert Status
+    expert_secret = os.getenv("EXPERT_TOKEN", "mechovate_expert_secret_2024")
+    if expert_token != expert_secret:
+        print(f"SECURITY WARNING: Unauthorized manual validation attempt for ID {observation_id}")
+        raise HTTPException(status_code=401, detail="Unauthorized: Invalid Expert Credentials")
+        
     obs = db.query(models.Observation).filter(models.Observation.id == observation_id).first()
     if not obs:
         raise HTTPException(status_code=404, detail="Observation not found")
     
     obs.is_valid = is_valid
+    obs.needs_review = False
+    obs.validation_status = "human_verified" if is_valid else "rejected"
     # If human validates it, we assume it's true ground truth now.
     obs.source = "human_review" 
     db.commit()
-    return {"message": "Observation updated"}
+    return {"message": "Observation updated and human verified"}
 
 @app.post("/api/ml/retrain")
 def retrain_ml(db: Session = Depends(get_db)):
@@ -187,6 +215,41 @@ def export_observations(db: Session = Depends(get_db)):
     response.headers["Content-Disposition"] = "attachment; filename=observations.csv"
     return response
 
+@app.get("/api/v1/export/ai-cleaned")
+def export_observations_ai_cleaned(db: Session = Depends(get_db)):
+    import pandas as pd
+    from io import StringIO
+    from fastapi.responses import StreamingResponse
+
+    try:
+        # Fetch all valid observations
+        observations = db.query(models.Observation).filter(models.Observation.is_valid == True).all()
+        
+        # Convert to list of dicts
+        data = [{
+            "id": obs.id,
+            "type": obs.type,
+            "value": obs.value,
+            "lat": obs.lat,
+            "long": obs.long,
+            "timestamp": str(obs.timestamp),
+            "source": obs.source
+        } for obs in observations]
+
+        # Perform AI Cleaning
+        cleaned_data = ai_agent_service.clean_observation_data(data)
+        
+        df = pd.DataFrame(cleaned_data)
+        
+        # Create CSV buffer
+        stream = StringIO()
+        df.to_csv(stream, index=False)
+        response = StreamingResponse(iter([stream.getvalue()]), media_type="text/csv")
+        response.headers["Content-Disposition"] = "attachment; filename=observations_ai_cleaned.csv"
+        return response
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"AI Export Error: {str(e)}")
+
 @app.get("/api/v1/voice/token")
 def get_voice_token(identity: str = "citizen_bot"):
     # Identity can be any string
@@ -204,6 +267,15 @@ def get_voice_token(identity: str = "citizen_bot"):
     
     return {"token": token.to_jwt()}
 
+@app.get("/api/v1/news")
+def read_news(category: str = None):
+    from news_service import news_service
+    return news_service.get_latest_news(category)
+
 @app.get("/")
 def read_root():
     return {"message": "Citizen Science API is running"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

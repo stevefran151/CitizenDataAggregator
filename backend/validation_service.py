@@ -1,13 +1,119 @@
 import numpy as np
 import requests
+import os
 
-# This service simulates (or actually queries) external World Geography Websites for validation
-# It also uses ML logic for anomaly detection
+class GeoSpatialValidator:
+    def __init__(self):
+        # Service areas (Bounding boxes: [min_lat, min_long, max_lat, max_long])
+        self.service_areas = {
+            "India": [8.0, 68.0, 38.0, 98.0],
+            "USA": [24.0, -125.0, 50.0, -66.0]
+        }
+    
+    def is_on_land(self, lat, long):
+        """
+        Check if coordinates correspond to a land location using a reverse geocoding check.
+        Uses OpenStreetMap Nominatim API (Simulated or actual fallback).
+        """
+        if lat == 0 and long == 0:
+            return False, "Null Island (0,0) coordinates are usually placeholders and invalid for environmental reporting."
+            
+        try:
+            # Simple check for nominatim
+            headers = {'User-Agent': 'Mechovate-Validation-Service/1.0'}
+            url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={long}&zoom=10"
+            response = requests.get(url, headers=headers, timeout=3)
+            if response.status_code == 200:
+                data = response.json()
+                if "error" in data:
+                    return False, "Coordinates appear to be in the ocean or an uninhabited area (No geocode data found)."
+                
+                country = data.get("address", {}).get("country")
+                return True, f"Location verified in {country}"
+        except Exception as e:
+            # Fallback if API is down: check against crude land boundaries or service areas
+            print(f"Geo-spatial API check failed: {e}")
+            for area, bbox in self.service_areas.items():
+                if bbox[0] <= lat <= bbox[2] and bbox[1] <= long <= bbox[3]:
+                    return True, f"Location falls within service area: {area} (Fallback verification)"
+            
+            return True, "Location could not be strictly verified as land, but is geographically plausible."
+
+    def validate_spatial_consistency(self, type_cat, lat, long, value):
+        """
+        Checks if the value is physically possible for the specific location.
+        Example: High moisture index in the middle of a known desert.
+        (Mock logic for MVP)
+        """
+        # Mock: Thar Desert / Sahara approximate bounds (simplified)
+        if 24.0 <= lat <= 28.0 and 70.0 <= long <= 75.0: # Thar Desert
+             if type_cat == "soil" and value > 60:
+                 return False, "Hydrological Anomaly: High soil moisture detected in a known desert region."
+        
+        return True, "Spatial consistency check passed."
+
+class NewsValidator:
+    def __init__(self):
+        self.api_key = os.getenv("NEWS_API_KEY") 
+        from news_service import news_service
+        self.news_service = news_service
+        from ai_agent_service import client as groq_client
+        self.groq_client = groq_client
+
+    def verify_trend_from_news(self, type_cat, lat, long, value):
+        """
+        Check for sudden environmental changes in news (e.g., fires, leaks, heatwaves).
+        Returns (is_justified, explanation, news_summary)
+        """
+        # 1. Fetch relevant news articles from our news service
+        relevant_news = self.news_service.find_relevant_news(type_cat, lat, long)
+        news_context = ""
+        if relevant_news:
+            news_context = "\n".join([f"- {n['title']}: {n['description']}" for n in relevant_news])
+        else:
+            news_context = "No specific news articles found for this category recently."
+
+        if not self.groq_client:
+            return False, "Groq client not available for news analysis.", ""
+
+        prompt = f"""
+        An environmental expert reported a sudden outlier:
+        - Category: {type_cat}
+        - Value: {value}
+        - Location: {lat}, {long}
+        
+        Recent Environmental News Context:
+        {news_context}
+        
+        Task: Based on the provided news context and your general knowledge of environmental incidents, 
+        does this outlier value seem 'justified' by a real-world trend or event?
+        
+        If a news article above directly explains the spike (e.g. dust storm for air pollution), 
+        mark as justified and explain the connection.
+        
+        Return JSON format: {{"justified": bool, "reason": "string", "event_type": "string"}}
+        """
+        
+        try:
+            from ai_agent_service import MODEL_NAME
+            chat_completion = self.groq_client.chat.completions.create(
+                messages=[{"role": "user", "content": prompt}],
+                model=MODEL_NAME,
+            )
+            import json
+            res_text = chat_completion.choices[0].message.content.replace("```json", "").replace("```", "").strip()
+            data = json.loads(res_text)
+            return data.get("justified", False), data.get("reason", ""), data.get("event_type", "Incident / Trend")
+        except Exception as e:
+            print(f"News validation error: {e}")
+            return False, "News verification service error", ""
 
 class WorldGeoValidator:
     def __init__(self):
         # We can simulate fetching live data or use APIs like Open-Meteo for Air/Weather
         self.api_url_air = "https://air-quality-api.open-meteo.com/v1/air-quality"
+        self.geo_validator = GeoSpatialValidator()
+        self.news_validator = NewsValidator()
         
         # Valid ranges based on World Health Organization (WHO) & EPA standards
         self.standards = {
@@ -29,6 +135,12 @@ class WorldGeoValidator:
             },
             "noise": {
                 "db": (0, 140) # Decibels
+            },
+            "biodiversity": {
+                "species_richness": (0, 10000), # Count
+                "canopy_cover": (0, 100), # %
+                "biodiversity_index": (0, 1), # Normalized Shannon/Simpson
+                "invasive_count": (0, 1000)
             }
         }
 
@@ -68,6 +180,17 @@ class WorldGeoValidator:
         Cross-reference with live external data if available.
         Returns (bool, str, ref_value)
         """
+        # 1. Geo-Spatial check (Verification of Land/Location)
+        geo_valid, geo_msg = self.geo_validator.is_on_land(lat, long)
+        if not geo_valid:
+            return False, geo_msg, None
+            
+        # 2. Consistency check
+        val = float(details.get("value") or 0)
+        consist_valid, consist_msg = self.geo_validator.validate_spatial_consistency(type_cat, lat, long, val)
+        if not consist_valid:
+            return False, consist_msg, None
+
         if type_cat.lower() == "air":
             try:
                 params = {
@@ -92,11 +215,11 @@ class WorldGeoValidator:
                         except ValueError:
                             pass
                     
-                    return True, "Validated against Live Satellite Data", real_aqi
+                    return True, f"{geo_msg} | Validated against Live Satellite Data", real_aqi
             except Exception as e:
                 print(f"External validation failed: {e}")
-                return True, "External API unavailable", None
+                return True, f"{geo_msg} | External API unavailable", None
         
-        return True, "No live source available", None
+        return True, geo_msg, None
 
 validator = WorldGeoValidator()

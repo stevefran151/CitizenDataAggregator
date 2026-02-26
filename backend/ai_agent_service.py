@@ -1,73 +1,28 @@
-import google.generativeai as genai
 import os
 from dotenv import load_dotenv
+from groq import Groq
 
 load_dotenv()
 
-GENAI_API_KEY = os.getenv("GOOGLE_API_KEY")
-if GENAI_API_KEY:
-    genai.configure(api_key=GENAI_API_KEY)
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+client = None
+if GROQ_API_KEY:
+    client = Groq(api_key=GROQ_API_KEY)
 
-# Reverting to use the google-generativeai library directly
-# 'ChatGoogleGenerativeAI' is a LangChain class not imported here.
-# using a model verified from user's available list
-# using a model verified from user's available list
-try:
-    import google.generativeai as genai
-    print(f"AI Agent Service: using genai version {genai.__version__}")
-    # Dynamically select a working model
-    model = None
-    try:
-        print("AI Agent Service: Listing available models...")
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                print(f"AI Agent Service: Found model {m.name}")
-                if 'gemini' in m.name:
-                    try:
-                        model = genai.GenerativeModel(m.name)
-                        print(f"AI Agent Service: Selected {m.name}")
-                        break
-                    except:
-                        continue
-        
-        if model is None:
-            # Last ditch attempt
-            model = genai.GenerativeModel('gemini-pro')
-            print("AI Agent Service: Fallback to hardcoded gemini-pro")
-    except Exception as e:
-        print(f"AI Agent Service: Error listing models: {e}")
-        model = genai.GenerativeModel('gemini-pro')
-except Exception as e:
-    print(f"AI Agent Service Import Error: {e}")
-    model = None
-
-import graph_rag_service
+# Use a standard Groq model
+MODEL_NAME = "llama-3.1-8b-instant" 
 
 def get_chat_response(query: str, observation_context: dict = None):
     """
-    Generates a response to the user query based on the observation context and GraphRAG knowledge base.
+    Generates a normal AI response to the user query based on the observation context using Groq.
     """
-    if not GENAI_API_KEY:
-        return "I'm sorry, I cannot answer right now because my brain (API Key) is missing."
+    if not GROQ_API_KEY:
+        return "I'm sorry, I cannot answer right now because my brain (Groq API Key) is missing."
     
-    # 1. Retrieve Knowledge
-    rag_response = ""
-    try:
-        if graph_rag_service.RAG_AVAILABLE:
-            rag_response = graph_rag_service.query_graph_rag(query)
-        else:
-            # Fallback: Simple RAG - Read the knowledge base file directly
-            kb_path = os.path.join(os.path.dirname(__file__), "knowledge_base", "biodiversity_report_2025.txt")
-            if os.path.exists(kb_path):
-                with open(kb_path, "r", encoding="utf-8") as f:
-                    rag_response = f"Relevant Report Excerpt:\n{f.read()[:5000]}" # Limit to 5k chars
-            else:
-                 rag_response = "Knowledge base file not found."
-    except Exception as e:
-        print(f"RAG Error: {e}")
-        rag_response = "Could not retrieve knowledge base."
-    
-    # 2. Build Context String
+    if not client:
+        return "Groq client not initialized."
+
+    # Context String
     context_str = "No specific observation selected."
     if observation_context:
         context_str = f"""
@@ -79,34 +34,35 @@ def get_chat_response(query: str, observation_context: dict = None):
         - Details: {observation_context.get('details')}
         """
 
-    # 3. Synthesize Final Answer using Chat LLM
+    # Synthesize Final Answer using Chat LLM
     prompt = f"""
-    You are an advanced environmental science assistant for a Citizen Science Data Aggregator.
+    You are a helpful environmental science assistant.
     
     User Query: {query}
-    
-    Relevant Knowledge Base Info (GraphRAG):
-    {rag_response}
     
     User's Current Observation Context:
     {context_str}
     
     Task:
-    Answer the user's question. 
-    - Use the Knowledge Base info to provide scientific backing, 2024-2025 trends, or global context.
-    - Use the Observation Context to make the answer specific to what the user is looking at.
-    - If the user's data is an outlier, explain why based on scientific norms.
+    Answer the user's question politely and accurately. 
+    - Use the Observation Context if relevant to make the answer specific to what the user is looking at.
+    - If the user's data is an outlier, mention it and explain what might cause such readings.
     - Be concise, professional, and helpful.
     """
     
     try:
-        if model is None:
-            return "AI Model not initialized."
-            
-        print(f"Sending prompt to model (length: {len(prompt)})")
-        response = model.generate_content(prompt)
-        print("Received response from model")
-        return response.text
+        print(f"Sending prompt to Groq model: {MODEL_NAME}")
+        chat_completion = client.chat.completions.create(
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt,
+                }
+            ],
+            model=MODEL_NAME,
+        )
+        print("Received response from Groq")
+        return chat_completion.choices[0].message.content
     except Exception as e:
         import traceback
         with open("last_error.txt", "w", encoding="utf-8") as f:
@@ -117,9 +73,9 @@ def get_chat_response(query: str, observation_context: dict = None):
 
 def parse_observation_from_text(text: str):
     """
-    Parses natural language text into a structured observation dictionary.
+    Parses natural language text into a structured observation dictionary using Groq.
     """
-    if not GENAI_API_KEY:
+    if not GROQ_API_KEY or not client:
         return None
 
     prompt = f"""
@@ -136,12 +92,67 @@ def parse_observation_from_text(text: str):
     """
     
     try:
-        response = model.generate_content(prompt)
+        chat_completion = client.chat.completions.create(
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt,
+                }
+            ],
+            model=MODEL_NAME,
+        )
         import json
-        # Clean potential markdown code blocks
-        clean_text = response.text.replace("```json", "").replace("```", "").strip()
+        clean_text = chat_completion.choices[0].message.content.replace("```json", "").replace("```", "").strip()
         data = json.loads(clean_text)
         return data
     except Exception as e:
         print(f"Error parsing voice input: {e}")
         return None
+
+def clean_observation_data(data_list: list):
+    """
+    Uses AI to clean and sanitize a list of observations.
+    It can fix typos in types, handle inconsistent units, and suggest better descriptions.
+    """
+    if not GROQ_API_KEY or not client or not data_list:
+        return data_list
+
+    # Convert observations to a compact string for the LLM
+    # Limit to first 50 for cost/latency in MVP, but could be batched
+    sample_data = data_list[:50]
+    
+    prompt = f"""
+    You are an expert environmental data scientist. 
+    Below is a list of citizen science observations in JSON format.
+    
+    Tasks:
+    1. Standardize 'type' fields (e.g., 'temp' -> 'temperature', 'Air' -> 'air').
+    2. Ensure 'value' fields are realistic for their types.
+    3. Return the cleaned data as a valid JSON array of objects.
+    
+    Data to clean:
+    {sample_data}
+    
+    Return ONLY the cleaned JSON array. No explanations.
+    """
+    
+    try:
+        chat_completion = client.chat.completions.create(
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt,
+                }
+            ],
+            model=MODEL_NAME,
+        )
+        import json
+        clean_text = chat_completion.choices[0].message.content.replace("```json", "").replace("```", "").strip()
+        cleaned_data = json.loads(clean_text)
+        
+        # Merge cleaned data back or replace
+        # For simplicity in MVP, we return the cleaned sample
+        return cleaned_data
+    except Exception as e:
+        print(f"Error cleaning data with AI: {e}")
+        return data_list

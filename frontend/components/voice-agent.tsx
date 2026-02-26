@@ -21,7 +21,7 @@ export default function VoiceAgent() {
     const connectToVoice = async () => {
         try {
             // Use the new port 8001
-            const res = await fetch("http://localhost:8001/api/v1/voice/token");
+            const res = await fetch("http://localhost:8000/api/v1/voice/token");
             if (!res.ok) throw new Error("Backend unavailable");
             const data = await res.json();
             setRoomToken(data.token);
@@ -122,3 +122,4 @@ export default function VoiceAgent() {
         </Card>
     );
 }
+

@@ -75,3 +75,4 @@ export default function VoiceInput({ onParsed }: { onParsed: (data: any) => void
         </Button>
     );
 }
+

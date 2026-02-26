@@ -15,6 +15,9 @@ llama-index-embeddings-google
 networkx
 matplotlib
 pypdf
-livekit-server-sdk
-python-multipart
-# livekit-agents # Optional if running python agent worker
+livekit-api
+groq
+livekit-agents
+livekit-plugins-deepgram
+livekit-plugins-elevenlabs
+livekit-plugins-silero
