@@ -7,11 +7,18 @@ import ObservationForm from "@/components/observation-form";
 // Dynamically import MapView to avoid SSR issues with Leaflet
 const MapView = dynamic(() => import("@/components/map-view"), { ssr: false });
 import ValidationPanel from "@/components/validation-panel";
+import HealthForecastPanel from "@/components/health-forecast";
+import VayuChat from "@/components/vayu-chat";
+import AcousticAnnotator from "@/components/acoustic-annotator";
+import AnalyticsOverview from "@/components/analytics-overview";
+import FeedbackForm from "@/components/feedback-form";
 import Link from "next/link";
 import {
+    Wind,
     ArrowRight,
     RotateCcw,
     TrendingUp,
+    BarChart3,
     Activity,
     AlertTriangle,
     CheckCircle,
@@ -30,6 +37,7 @@ import {
     Menu,
     ChevronRight,
     Globe,
+    Mic2,
 } from "lucide-react";
 import NewsFeed from "@/components/news-feed";
 import { AreaChart, Area, ResponsiveContainer, Tooltip as RechartsTooltip, XAxis, YAxis, CartesianGrid } from 'recharts';
@@ -45,6 +53,10 @@ interface Observation {
     source?: string;
     needs_review: boolean;
     validation_status: string;
+    location_name?: string;
+    is_expert?: boolean;
+    outlier_score?: number;
+    validation_report?: any;
 }
 
 import { Button } from "@/components/ui/button";
@@ -72,7 +84,7 @@ export default function Dashboard() {
 
     const fetchObservations = async () => {
         try {
-            const res = await fetch("http://localhost:8000/api/v1/data");
+            const res = await fetch("http://localhost:8001/api/v1/data");
             if (res.ok) {
                 const data = await res.json();
                 setObservations(data);
@@ -110,40 +122,48 @@ export default function Dashboard() {
         { id: "form", label: "Data Submission", icon: FileText, description: "Contribute environmental records" },
         { id: "validate", label: "Quality Control", icon: ShieldCheck, description: "Validation & human review", expertOnly: true },
         { id: "news", label: "Environmental Intelligence", icon: Globe, description: "Real-time news & trend grounding" },
+        { id: "analytics", label: "Analytics Overview", icon: BarChart3, description: "Submission stats & AI health projection" },
+        { id: "vayu", label: "Vayu Prediction", icon: Wind, description: "Community atmospheric intelligence" },
+        { id: "acoustic", label: "Acoustic Audit", icon: Mic2, description: "Crowd-labeling ecological audio" },
         { id: "chat", label: "Citizen Assistant", icon: MessageSquare, description: "AI-powered environmental support" },
+        { id: "feedback", label: "Queries & Feedback", icon: HelpCircle, description: "Submit thoughts & system queries" },
     ].filter(item => !item.expertOnly || userRole === 'expert');
 
     return (
         <div className="min-h-screen bg-white flex flex-col font-sans">
             {/* Top Navigation Header */}
             <header className="sticky top-0 z-50 bg-white border-b border-slate-200">
-                <div className="max-w-[1600px] mx-auto px-6 h-16 flex items-center justify-between">
-                    <div className="flex items-center gap-8">
-                        <div className="flex items-center gap-2">
+                <div className="max-w-[1600px] mx-auto px-6 h-auto min-h-16 py-3 flex flex-col lg:flex-row items-center justify-between gap-4">
+                    <div className="flex items-center justify-between w-full lg:w-auto gap-8">
+                        <div className="flex items-center gap-2 flex-shrink-0">
                             <div className="w-8 h-8 bg-slate-900 rounded flex items-center justify-center">
                                 <Database className="w-4 h-4 text-white" />
                             </div>
                             <span className="font-bold text-slate-900 tracking-tight uppercase">Mechovate</span>
                         </div>
 
-                        <nav className="hidden md:flex items-center gap-1">
+                        {/* Mobile Menu Button can go here if needed, but for now we'll just make the nav scrollable */}
+                    </div>
+
+                    <nav className="flex items-center gap-1 overflow-x-auto no-scrollbar w-full lg:w-auto pb-2 lg:pb-0">
+                        <div className="flex items-center gap-1 min-w-max">
                             {navItems.map((item) => (
                                 <button
                                     key={item.id}
                                     onClick={() => setActiveTab(item.id)}
-                                    className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${activeTab === item.id
-                                        ? 'bg-slate-100 text-slate-900'
-                                        : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+                                    className={`px-3 py-2 rounded-md text-xs font-bold uppercase tracking-tight transition-all flex-shrink-0 ${activeTab === item.id
+                                        ? 'bg-slate-900 text-white shadow-lg'
+                                        : 'text-slate-500 hover:text-slate-900 hover:bg-slate-100'
                                         }`}
                                 >
                                     <div className="flex items-center gap-2">
-                                        <item.icon className="w-4 h-4" />
+                                        <item.icon className="w-3.5 h-3.5" />
                                         {item.label}
                                     </div>
                                 </button>
                             ))}
-                        </nav>
-                    </div>
+                        </div>
+                    </nav>
 
                     <div className="flex items-center gap-4">
                         <div className="flex items-center gap-3 px-3 py-1.5 bg-slate-50 rounded-lg border border-slate-100">
@@ -305,9 +325,9 @@ export default function Dashboard() {
                                             <div key={idx} className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-100 hover:border-indigo-100 transition-colors group">
                                                 <div className="flex flex-col">
                                                     <span className="text-xs font-black text-slate-900 uppercase tracking-tight group-hover:text-indigo-600 transition-colors">{obs.type} Registry</span>
-                                                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter mt-0.5 flex items-center gap-1">
+                                                    <span className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter mt-0.5 flex items-center gap-1 truncate max-w-[120px]" title={`${obs.lat.toFixed(2)}, ${obs.long.toFixed(2)}`}>
                                                         <Globe className="w-2.5 h-2.5" />
-                                                        {obs.lat.toFixed(2)}, {obs.long.toFixed(2)}
+                                                        {obs.location_name || `${obs.lat.toFixed(2)}, ${obs.long.toFixed(2)}`}
                                                     </span>
                                                 </div>
                                                 <div className="flex items-center gap-3">
@@ -372,7 +392,13 @@ export default function Dashboard() {
                                     Live Satellite & Press Sync
                                 </span>
                             </div>
-                            <NewsFeed />
+                            <NewsFeed initialCategory={currentObservation?.type} />
+                        </div>
+                    )}
+
+                    {activeTab === "analytics" && (
+                        <div className="py-6">
+                            <AnalyticsOverview observations={observations} />
                         </div>
                     )}
 
@@ -385,6 +411,43 @@ export default function Dashboard() {
                             <div className="flex-1 overflow-hidden">
                                 <ChatInterface observation={currentObservation} />
                             </div>
+                        </div>
+                    )}
+                    {activeTab === "vayu" && (
+                        <div className="max-w-4xl mx-auto py-6">
+                            <div className="mb-8 flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-3 italic leading-none">
+                                        <Wind className="w-8 h-8 text-blue-500" /> VAYUCHAT
+                                    </h3>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">Community Air Quality Prediction Interface</p>
+                                </div>
+                                <Link href="/vayu">
+                                    <Button variant="outline" className="rounded-full font-black text-[10px] uppercase tracking-widest bg-slate-50 border-slate-200">Full Immersive Mode</Button>
+                                </Link>
+                            </div>
+                            <VayuChat />
+                        </div>
+                    )}
+                    {activeTab === "acoustic" && (
+                        <div className="max-w-[1200px] mx-auto py-6">
+                            <div className="mb-8 flex items-center justify-between">
+                                <div>
+                                    <h3 className="text-2xl font-black text-slate-900 tracking-tight flex items-center gap-3 italic leading-none">
+                                        <Mic2 className="w-8 h-8 text-emerald-500" /> ACOUSTICVAULT
+                                    </h3>
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">Crowd-Labeling & Bio-Acoustic Annotation Engine</p>
+                                </div>
+                                <Link href="/acoustic-vault">
+                                    <Button variant="outline" className="rounded-full font-black text-[10px] uppercase tracking-widest bg-slate-50 border-slate-200">Full Immersive Mode</Button>
+                                </Link>
+                            </div>
+                            <AcousticAnnotator />
+                        </div>
+                    )}
+                    {activeTab === "feedback" && (
+                        <div className="max-w-[1200px] mx-auto py-6">
+                            <FeedbackForm />
                         </div>
                     )}
                 </div>

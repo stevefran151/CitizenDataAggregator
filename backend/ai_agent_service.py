@@ -156,3 +156,52 @@ def clean_observation_data(data_list: list):
     except Exception as e:
         print(f"Error cleaning data with AI: {e}")
         return data_list
+def summarize_environmental_news(category: str, news_list: list):
+    """
+    Acts as the Environmental Intelligence AI to summarize and rank news.
+    """
+    if not GROQ_API_KEY or not client or not news_list:
+        return news_list
+
+    prompt = f"""
+    You are an Environmental Intelligence AI specialized in Indian environmental news.
+    
+    TASK:
+    Convert the following list of news articles into a structured JSON array of dashboard cards.
+    
+    Selected Category: {category}
+    News Articles to process: {news_list}
+    
+    RULES:
+    1. Create a card for EVERY article provided in the list above. 
+    2. Format requirements:
+       - headline: (from title)
+       - summary: (from description, 1-2 lines)
+       - impact_level: (Low, Medium, or High)
+       - source_name: (from source)
+       - publication_date: (from timestamp/date)
+       - url: (from url)
+    3. Ensure the output is a valid JSON array.
+    """
+    
+    try:
+        chat_completion = client.chat.completions.create(
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are a professional Environmental Intelligence AI assistant. Return structured JSON only."
+                },
+                {
+                    "role": "user",
+                    "content": prompt,
+                }
+            ],
+            model=MODEL_NAME,
+        )
+        import json
+        clean_text = chat_completion.choices[0].message.content.replace("```json", "").replace("```", "").strip()
+        data = json.loads(clean_text)
+        return data
+    except Exception as e:
+        print(f"Error generating intelligence: {e}")
+        return news_list

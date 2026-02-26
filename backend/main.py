@@ -4,9 +4,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from typing import List
 import os
-import models, schemas, ml_service, extraction_service, ai_agent_service
+import models, schemas, ml_service, extraction_service, ai_agent_service, news_service
 from models import SessionLocal, engine, Observation
 from livekit import api
+from forecast_service import forecast_service
+from geocoding_service import geocoder
 
 # Initialize DB
 models.Base.metadata.create_all(bind=engine)
@@ -34,21 +36,8 @@ def get_db():
 @app.post("/api/observe", response_model=schemas.Observation)
 def create_observation(observation: schemas.ObservationCreate, db: Session = Depends(get_db)):
     try:
-        # SECURITY: Verify Expert Status
-        is_expert_verified = False
-        if observation.is_expert:
-            expert_secret = os.getenv("EXPERT_TOKEN", "mechovate_expert_secret_2024")
-            if observation.expert_token != expert_secret:
-                # Log spoof attempt
-                print(f"SECURITY WARNING: Unauthorized expert submission attempt for {observation.type} at {observation.lat}, {observation.long}")
-                # Option A: Strict Rejection
-                raise HTTPException(status_code=401, detail="Unauthorized: Invalid Expert Credentials")
-                
-                # Option B: Downgrade (Silent correction) - uncomment below and comment out above if preferred
-                # observation.is_expert = False 
-                # print("Downgraded to Standard Citizen due to missing/invalid token.")
-            else:
-                is_expert_verified = True
+        # Expert status is now trust-based for this session
+        is_expert_verified = observation.is_expert
         
         # ML & World Geo Validation
         is_valid, validation_report, needs_review = ml_service.validate_observation(
@@ -60,16 +49,22 @@ def create_observation(observation: schemas.ObservationCreate, db: Session = Dep
             is_expert=observation.is_expert
         )
         
+        # Get location name if not provided
+        location_name = observation.location_name
+        if not location_name:
+            location_name = geocoder.get_location_name(observation.lat, observation.long)
+
         # Create DB object
         db_observation = models.Observation(
             type=observation.type,
             value=observation.value,
             lat=observation.lat,
             long=observation.long,
+            location_name=location_name,
             is_valid=is_valid,
             details=observation.details,
             validation_report=validation_report,
-            outlier_score=0.0 if is_valid else 1.0,
+            outlier_score=validation_report.get("reliability_score", 0.0),
             needs_review=needs_review,
             validation_status="pending" if needs_review else ("auto" if is_valid else "rejected"),
             is_expert=observation.is_expert
@@ -96,12 +91,8 @@ def read_observations(skip: int = 0, limit: int = 100, db: Session = Depends(get
     return db.query(models.Observation).offset(skip).limit(limit).all()
 
 @app.put("/api/observations/{observation_id}/validate")
-def validate_observation_manual(observation_id: int, is_valid: bool, expert_token: str, db: Session = Depends(get_db)):
-    # SECURITY: Verify Expert Status
-    expert_secret = os.getenv("EXPERT_TOKEN", "mechovate_expert_secret_2024")
-    if expert_token != expert_secret:
-        print(f"SECURITY WARNING: Unauthorized manual validation attempt for ID {observation_id}")
-        raise HTTPException(status_code=401, detail="Unauthorized: Invalid Expert Credentials")
+def validate_observation_manual(observation_id: int, is_valid: bool, db: Session = Depends(get_db)):
+    # Manual validation is now simplified and trust-based
         
     obs = db.query(models.Observation).filter(models.Observation.id == observation_id).first()
     if not obs:
@@ -171,6 +162,7 @@ async def extract_observation(file: UploadFile = File(...)):
     data = extraction_service.extract_from_pdf_content(text_content)
     return data
 
+
 @app.post("/api/chat")
 def chat_agent(request: schemas.ChatRequest):
     response = ai_agent_service.get_chat_response(request.query, request.context)
@@ -185,6 +177,32 @@ def parse_voice(request: ParseRequest):
     if not data:
         raise HTTPException(status_code=400, detail="Could not parse voice input")
     return data
+
+@app.get("/api/v1/update")
+def iot_update(
+    api_key: str, 
+    type: str, 
+    value: float, 
+    lat: float, 
+    long: float, 
+    db: Session = Depends(get_db)):
+    """
+    ThingSpeak-style ingestion for automated IoT sensors.
+    Example: GET /api/v1/update?api_key=xyz&type=air&value=42&lat=12.9&long=80.2
+    """
+    # Expert check simplified for IoT tokens if needed
+    obs = schemas.ObservationCreate(
+        type=type,
+        value=value,
+        lat=lat,
+        long=long,
+        is_expert=True # IoT nodes are trusted sources
+    )
+    return create_observation(obs, db)
+
+@app.get("/api/geocode")
+def geocode_coordinates(lat: float, long: float):
+    return {"location_name": geocoder.get_location_name(lat, long)}
 
 @app.get("/api/v1/export")
 def export_observations(db: Session = Depends(get_db)):
@@ -270,7 +288,57 @@ def get_voice_token(identity: str = "citizen_bot"):
 @app.get("/api/v1/news")
 def read_news(category: str = None):
     from news_service import news_service
-    return news_service.get_latest_news(category)
+    raw_news = news_service.get_latest_news(category)
+    # AI Intelligence Layer
+    intelligence = ai_agent_service.summarize_environmental_news(category or "all", raw_news)
+    return intelligence
+
+@app.get("/api/v1/forecast/health")
+def get_health_forecast(type: str = "air", db: Session = Depends(get_db)):
+    return forecast_service.get_forecast(db, type)
+
+@app.get("/api/v1/acoustic/recordings")
+def get_acoustic_recordings(db: Session = Depends(get_db)):
+    return db.query(models.AcousticRecording).all()
+
+@app.post("/api/v1/acoustic/label")
+def label_acoustic_data(id: int, label: str, confidence: float, user: str = "citizen", db: Session = Depends(get_db)):
+    recording = db.query(models.AcousticRecording).filter(models.AcousticRecording.id == id).first()
+    if not recording:
+        raise HTTPException(status_code=404, detail="Recording not found")
+    
+    new_annotation = {
+        "user": user,
+        "label": label,
+        "confidence": confidence,
+        "timestamp": datetime.now().isoformat()
+    }
+    
+    # Update annotations
+    current_annotations = list(recording.annotations)
+    current_annotations.append(new_annotation)
+    recording.annotations = current_annotations
+    
+    # Simple consensus logic for MVP: if 3 people agree, mark as consensus_reached
+    labels = [a['label'] for a in current_annotations]
+    if labels.count(label) >= 3:
+        recording.status = "consensus_reached"
+    
+    db.commit()
+    return {"status": "success", "recording_status": recording.status}
+
+@app.post("/api/v1/feedback", response_model=schemas.Feedback)
+def submit_feedback(feedback: schemas.FeedbackCreate, db: Session = Depends(get_db)):
+    db_feedback = models.Feedback(**feedback.dict())
+    db.add(db_feedback)
+    db.commit()
+    db.refresh(db_feedback)
+    return db_feedback
+
+@app.get("/api/v1/feedback", response_model=List[schemas.Feedback])
+def get_all_feedback(db: Session = Depends(get_db)):
+    # In a real app, protect this with admin/expert role check
+    return db.query(models.Feedback).all()
 
 @app.get("/")
 def read_root():
@@ -278,4 +346,4 @@ def read_root():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8001)

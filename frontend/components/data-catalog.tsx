@@ -18,6 +18,8 @@ interface Observation {
     needs_review: boolean;
     validation_status: string;
     is_expert?: boolean;
+    outlier_score?: number;
+    location_name?: string;
 }
 
 export default function DataCatalog({
@@ -110,7 +112,7 @@ export default function DataCatalog({
             </div>
 
             {/* Data Grid / Table */}
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-x-auto no-scrollbar">
                 <table className="w-full text-left border-collapse">
                     <thead className="bg-gray-50 border-b border-gray-100">
                         <tr>
@@ -118,6 +120,7 @@ export default function DataCatalog({
                             <th className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Environmental Parameter</th>
                             <th className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 text-center">Observed Value</th>
                             <th className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Trust status</th>
+                            <th className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 text-center">AI Reliability</th>
                             <th className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Geo Coverage</th>
                             <th className="px-6 py-4 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400">Actions</th>
                         </tr>
@@ -174,10 +177,25 @@ export default function DataCatalog({
                                         )}
                                     </div>
                                 </td>
+                                <td className="px-6 py-5 text-center">
+                                    <div className="flex flex-col items-center">
+                                        <div className="w-full bg-gray-100 h-1.5 rounded-full overflow-hidden max-w-[80px]">
+                                            <div
+                                                className={`h-full transition-all duration-1000 ${(obs.outlier_score || 0) > 80 ? 'bg-emerald-500' :
+                                                    (obs.outlier_score || 0) > 50 ? 'bg-amber-500' : 'bg-rose-500'
+                                                    }`}
+                                                style={{ width: `${obs.outlier_score || 0}%` }}
+                                            />
+                                        </div>
+                                        <span className="text-[10px] font-black mt-1 text-slate-500">{Math.round(obs.outlier_score || 0)}%</span>
+                                    </div>
+                                </td>
                                 <td className="px-6 py-5">
                                     <div className="flex items-center gap-2 text-gray-400">
                                         <MapIcon className="w-3.5 h-3.5" />
-                                        <span className="text-[11px] font-medium">{obs.lat.toFixed(3)}, {obs.long.toFixed(3)}</span>
+                                        <span className="text-[11px] font-medium truncate max-w-[150px]" title={`${obs.lat.toFixed(3)}, ${obs.long.toFixed(3)}`}>
+                                            {obs.location_name || `${obs.lat.toFixed(3)}, ${obs.long.toFixed(3)}`}
+                                        </span>
                                     </div>
                                 </td>
                                 <td className="px-6 py-5">

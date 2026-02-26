@@ -27,14 +27,12 @@ import { Input } from "@/components/ui/input";
 export default function LandingPage() {
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [loginRole, setLoginRole] = useState<'citizen' | 'expert' | null>(null);
+  const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
 
   const handleLogin = (role: 'citizen' | 'expert') => {
     setLoginRole(role);
     localStorage.setItem("userRole", role);
-    if (role === 'expert') {
-      localStorage.setItem("expertToken", loginPassword);
-    }
     window.location.href = "/dashboard";
   };
 
@@ -52,12 +50,12 @@ export default function LandingPage() {
           <a href="#features" className="text-sm font-bold text-slate-600 hover:text-indigo-600 transition">Methodology</a>
           <a href="#community" className="text-sm font-bold text-slate-600 hover:text-indigo-600 transition">Collective</a>
           <a href="#network" className="text-sm font-bold text-slate-600 hover:text-indigo-600 transition">Global Network</a>
-          <a href="http://localhost:8000/docs" className="text-sm font-bold text-slate-600 hover:text-indigo-600 transition">Open API</a>
+          <a href="http://localhost:8001/docs" className="text-sm font-bold text-slate-600 hover:text-indigo-600 transition">Open API</a>
         </div>
         <div className="flex items-center gap-4">
           <button
             onClick={() => { setLoginRole('citizen'); setIsLoginModalOpen(true); }}
-            className="text-sm font-bold text-slate-600 hover:text-indigo-600 transition"
+            className="hidden sm:block text-sm font-bold text-slate-600 hover:text-indigo-600 transition"
           >
             Public Access
           </button>
@@ -323,6 +321,8 @@ export default function LandingPage() {
                   <Input
                     type="email"
                     placeholder="your@institute.edu"
+                    value={loginEmail}
+                    onChange={(e) => setLoginEmail(e.target.value)}
                     className="h-12 pl-11 rounded-xl bg-slate-50 border-slate-100 focus:bg-white focus:ring-indigo-500"
                   />
                 </div>
@@ -366,7 +366,7 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-6 grid md:grid-cols-3 gap-12">
           {[
             { title: "Iso-Forest Anomaly Detection", icon: Database, desc: "Machine learning ensembles cross-reference user data with local historical clusters to identify statistical deviations." },
-            { title: "GEOSS API Integration", icon: Satellite, desc: "Direct connectivity to Global Earth Observation System of Systems (GEOSS) for real-time satellite verification." },
+            { title: "Global Ground Truth", icon: Satellite, desc: "Integrated verification with OpenAQ land stations and iNaturalist biological datasets." },
             { title: "HITL Verification Protocol", icon: UserCheck, desc: "High-trust 'Human-In-The-Loop' workflows ensure that outliers from experts are audited for new pattern discovery." }
           ].map((f, i) => (
             <div key={i} className="space-y-4">
@@ -377,6 +377,33 @@ export default function LandingPage() {
               <p className="text-sm text-slate-500 leading-relaxed">{f.desc}</p>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* Resource Ecosystem */}
+      <section id="resources" className="py-20 border-t border-slate-100 bg-white">
+        <div className="max-w-7xl mx-auto px-6">
+          <div className="flex flex-col items-center text-center mb-16">
+            <span className="text-[10px] font-black text-indigo-600 uppercase tracking-widest bg-indigo-50 px-3 py-1 rounded-full mb-4">Ecosystem</span>
+            <h2 className="text-3xl font-black text-slate-900 tracking-tighter mb-4 uppercase">Connected Ground Truth</h2>
+            <p className="text-slate-500 max-w-2xl text-sm">We aggregate data from the worlds most trusted open environmental networks to validate citizen reports.</p>
+          </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-8 items-center justify-items-center opacity-70 grayscale hover:grayscale-0 transition-all duration-700">
+            <a href="https://openaq.org" target="_blank" className="hover:scale-110 transition-transform font-bold text-slate-400">OpenAQ</a>
+            <a href="https://www.inaturalist.org" target="_blank" className="hover:scale-110 transition-transform font-bold text-slate-400">iNaturalist</a>
+            <a href="https://thingspeak.com" target="_blank" className="hover:scale-110 transition-transform font-bold text-slate-400">ThingSpeak</a>
+            <a href="https://opensustain.tech" target="_blank" className="hover:scale-110 transition-transform font-bold text-slate-400">OpenSustain</a>
+            <a href="https://participatorysciences.org" target="_blank" className="hover:scale-110 transition-transform font-bold text-slate-400">SciStarter</a>
+          </div>
+
+          <div className="mt-16 text-center">
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Build with us</p>
+            <div className="flex justify-center gap-4">
+              <a href="https://github.com/openaq" className="text-xs text-indigo-600 hover:underline">OpenAQ GitHub</a>
+              <a href="https://github.com/inaturalist" className="text-xs text-indigo-600 hover:underline">iNaturalist GitHub</a>
+            </div>
+          </div>
         </div>
       </section>
     </div>

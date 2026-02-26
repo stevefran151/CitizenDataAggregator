@@ -8,6 +8,16 @@ class QualityClassifier:
             return QualityClassifier._classify_water(value)
         elif "bio" in type:
             return QualityClassifier._classify_biodiversity(value)
+        elif "noise" in type:
+            return QualityClassifier._classify_noise(value)
+        elif "waste" in type:
+            return QualityClassifier._classify_waste(value)
+        elif "weather" in type:
+            return QualityClassifier._classify_weather(value)
+        elif "soil" in type:
+            return QualityClassifier._classify_soil(value)
+        elif "radiation" in type or "uv" in type:
+            return QualityClassifier._classify_radiation(value)
         else:
             return {
                 "quality_label": "Unknown",
@@ -61,3 +71,56 @@ class QualityClassifier:
              return {"quality_label": "Poor", "color_code": "#FF7E00", "health_msg": "Water quality is poor; significant treatment required."}
         else:
              return {"quality_label": "Unsafe", "color_code": "#FF0000", "health_msg": "Water is unsafe for consumption or contact."}
+
+    @staticmethod
+    def _classify_noise(value: float):
+        if value <= 40:
+            return {"quality_label": "Quiet", "color_code": "#00E400", "health_msg": "Low ambient noise level."}
+        elif value <= 60:
+            return {"quality_label": "Moderate", "color_code": "#FFFF00", "health_msg": "Common city noise levels."}
+        elif value <= 85:
+            return {"quality_label": "Loud", "color_code": "#FF7E00", "health_msg": "Threshold for long-term hearing protection."}
+        else:
+            return {"quality_label": "Extreme", "color_code": "#FF0000", "health_msg": "Immediate risk of hearing damage."}
+
+    @staticmethod
+    def _classify_waste(value: float):
+        if value >= 80:
+            return {"quality_label": "Efficient", "color_code": "#00E400", "health_msg": "Optimized waste collection and management."}
+        elif value >= 50:
+            return {"quality_label": "Standard", "color_code": "#FFFF00", "health_msg": "Standard waste management protocols."}
+        else:
+            return {"quality_label": "Poor", "color_code": "#FF0000", "health_msg": "Risk of environmental contamination from waste."}
+
+    @staticmethod
+    def _classify_weather(value: float):
+        # Using temp as primary value
+        if 15 <= value <= 25:
+            return {"quality_label": "Pleasant", "color_code": "#00E400", "health_msg": "Optimal weather conditions."}
+        elif value > 35 or value < 0:
+            return {"quality_label": "Extreme", "color_code": "#FF0000", "health_msg": "Caution recommended for outdoor activities."}
+        else:
+            return {"quality_label": "Moderate", "color_code": "#FFFF00", "health_msg": "Standard weather conditions."}
+
+    @staticmethod
+    def _classify_radiation(value: float):
+        if value <= 2:
+            return {"quality_label": "Low", "color_code": "#00E400", "health_msg": "Low UV/Radiation levels."}
+        elif value <= 5:
+            return {"quality_label": "Moderate", "color_code": "#FFFF00", "health_msg": "Moderate risk; sun protection recommended."}
+        elif value <= 10:
+            return {"quality_label": "High", "color_code": "#FF7E00", "health_msg": "High risk; limit midday sun exposure."}
+        else:
+            return {"quality_label": "Extreme", "color_code": "#FF0000", "health_msg": "Very high risk; avoid outdoor exposure."}
+
+    @staticmethod
+    def _classify_soil(value: float):
+        # Soil Moisture or Health Index (0-100 scale)
+        if value >= 70:
+            return {"quality_label": "Superior", "color_code": "#00E400", "health_msg": "Excellent soil moisture and nutrient profile."}
+        elif value >= 40:
+            return {"quality_label": "Good", "color_code": "#92D050", "health_msg": "Healthy soil conditions for vegetation."}
+        elif value >= 20:
+            return {"quality_label": "Dry", "color_code": "#FFFF00", "health_msg": "Soil is becoming dry; irrigation may be needed."}
+        else:
+            return {"quality_label": "Arid", "color_code": "#FF0000", "health_msg": "Critical moisture deficit; soil health is at risk."}

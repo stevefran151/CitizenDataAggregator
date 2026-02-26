@@ -97,9 +97,8 @@ class AdvancedOutlierDetector:
 
     def check_outlier(self, value, lat, long):
         """
-        Returns True if outlier, False if valid (inlier).
-        (Note: Function name logic swapped from previous simple service for clarity in ensemble)
-        Actually, let's keep consistent: returns True if outlier.
+        Returns (is_outlier, reliability_score)
+        reliability_score: 0.0 to 1.0 (1.0 = highly reliable inlier)
         """
         if not self.is_fitted:
             self._initial_fit()
@@ -107,19 +106,36 @@ class AdvancedOutlierDetector:
         features = np.array([[value, lat, long]])
         features_scaled = self.scaler.transform(features)
 
-        # Scikit-learn convention: -1 for outlier, 1 for inlier
-        # We convert to: -1 -> 1 (is outlier), 1 -> 0 (not outlier) for voting
-        
+        # 1. Binary Predictions
         pred_iso = 1 if self.iso_forest.predict(features_scaled)[0] == -1 else 0
         pred_lof = 1 if self.lof.predict(features_scaled)[0] == -1 else 0
         pred_svm = 1 if self.oc_svm.predict(features_scaled)[0] == -1 else 0
-        
         votes = pred_iso + pred_lof + pred_svm
-        
-        # Majority vote: if 2 or more models say outlier, it's an outlier
         is_outlier = votes >= 2
+
+        # 2. Decision Scores for Reliability
+        # decision_function returns signed distance to hyperplane/threshold
+        # These need normalization.
+        score_iso = self.iso_forest.decision_function(features_scaled)[0]
+        score_svm = self.oc_svm.decision_function(features_scaled)[0]
+        score_lof = self.lof.decision_function(features_scaled)[0]
+
+        # Normalize components (rough heuristics for scikit-learn defaults)
+        # IsoForest: usually -0.5 to 0.5. 0 is the threshold.
+        # SVM: can be large.
+        # LOF: usually negative.
         
-        return is_outlier
+        # Sigmoid-like normalization to 0-1 range
+        def normalize(s):
+            return 1 / (1 + np.exp(-10 * s)) # Strong sigmoid around 0
+
+        rel_iso = normalize(score_iso)
+        rel_svm = normalize(score_svm)
+        rel_lof = normalize(score_lof)
+
+        reliability = (rel_iso + rel_svm + rel_lof) / 3
+        
+        return is_outlier, float(reliability)
 
 # Singleton instance
 detector = AdvancedOutlierDetector()
@@ -147,8 +163,9 @@ def validate_observation(value: float, lat: float=0.0, long: float=0.0, type_cat
 
 
     # 2. Live External Check
-    is_live_valid, live_msg, ref_val = validation_service.validator.check_live_data(type_cat, lat, long, details or {"value": value})
+    is_live_valid, live_msg, ref_val, ext_meta = validation_service.validator.check_live_data(type_cat, lat, long, details or {"value": value})
     report["satellite_value"] = ref_val
+    report["external_meta"] = ext_meta
     if not is_live_valid:
         # If live check fails (e.g. 5x diff from satellite), experts are flagged for review instead of auto-rejection
         if is_expert:
@@ -163,7 +180,8 @@ def validate_observation(value: float, lat: float=0.0, long: float=0.0, type_cat
             return False, report, False
 
     # 3. ML Check
-    is_outlier = detector.check_outlier(value, lat, long)
+    is_outlier, reliability = detector.check_outlier(value, lat, long)
+    report["reliability_score"] = round(reliability * 100, 2)
     
     # 4. Hybrid Trust Logic
     needs_review = False
@@ -182,7 +200,7 @@ def validate_observation(value: float, lat: float=0.0, long: float=0.0, type_cat
             else:
                 is_valid = True
                 needs_review = True
-                report["ml_status"] = "Potential New Trend (Expert Outlier - No News Match)"
+                report["ml_status"] = f"Potential New Trend (Expert Outlier - Reliability: {report['reliability_score']}%)"
         
         # If no satellite data, expert data is considered "Valid" but flagged for meta-verification
         if ref_val is None:
@@ -191,7 +209,7 @@ def validate_observation(value: float, lat: float=0.0, long: float=0.0, type_cat
     else:
         # Standard user logic: anomalies are rejected or flagged heavily
         if is_outlier:
-            report["ml_status"] = "Outlier Detected (Standard User)"
+            report["ml_status"] = f"Outlier Detected (Reliability: {report['reliability_score']}%)"
             is_valid = False
             # We still might want to review it if it's "close" but for MVP we reject
         

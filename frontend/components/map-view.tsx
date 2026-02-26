@@ -115,11 +115,21 @@ const createPulseIcon = (color: string, isExpert: boolean = false) => {
     });
 };
 
-const greenPulse = createPulseIcon('#10b981');
-const redPulse = createPulseIcon('#ef4444');
-const orangePulse = createPulseIcon('#f59e0b');
-const expertPulse = createPulseIcon('#10b981', true);
 const selectionPulse = createPulseIcon('#6366f1');
+
+// Memoize icons to prevent excessive DOM thrashing
+const iconCache: Record<string, L.DivIcon> = {};
+
+const getMarkerIcon = (obs: Observation) => {
+    const baseColor = obs.color_code || (obs.is_valid ? '#10b981' : '#ef4444');
+    const cacheKey = `${baseColor}_${obs.is_expert}`;
+
+    if (!iconCache[cacheKey]) {
+        iconCache[cacheKey] = createPulseIcon(baseColor, obs.is_expert);
+    }
+
+    return iconCache[cacheKey];
+};
 
 const searchMarkerIcon = L.divIcon({
     className: 'custom-search-marker',
@@ -259,7 +269,7 @@ export default function MapView({
                     <Marker
                         key={idx}
                         position={[obs.lat, obs.long]}
-                        icon={obs.is_expert ? expertPulse : (obs.needs_review ? orangePulse : (obs.is_valid ? greenPulse : redPulse))}
+                        icon={getMarkerIcon(obs)}
                     >
                         <Popup>
                             <div className="min-w-[220px] p-2">

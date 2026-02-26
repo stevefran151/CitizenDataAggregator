@@ -36,6 +36,7 @@ interface Observation {
     timestamp: string
     needs_review: boolean
     is_expert: boolean
+    location_name?: string
     validation_report?: any
 }
 
@@ -202,8 +203,8 @@ export default function App() {
                             </div>
 
                             <div className="flex items-center gap-4 text-[10px] font-mono text-slate-500">
-                                <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {new Date(obs.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                                <span className="flex items-center gap-1"><Globe className="w-3 h-3" /> {obs.lat.toFixed(2)}, {obs.long.toFixed(2)}</span>
+                                <span className="flex items-center gap-1 shrink-0"><Clock className="w-3 h-3" /> {new Date(obs.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                <span className="flex items-center gap-1 truncate"><Globe className="w-3 h-3" /> {obs.location_name || `${obs.lat.toFixed(2)}, ${obs.long.toFixed(2)}`}</span>
                             </div>
 
                             {selectedObs?.id === obs.id && (

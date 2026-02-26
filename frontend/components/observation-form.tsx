@@ -25,13 +25,14 @@ export default function ObservationForm({ onObservationAdded, selectedLocation, 
     // Location State
     const [lat, setLat] = useState("");
     const [long, setLong] = useState("");
+    const [locationName, setLocationName] = useState("");
     const [locationQuery, setLocationQuery] = useState("");
     const [isGeocoding, setIsGeocoding] = useState(false);
 
     const [loading, setLoading] = useState(false);
     const [isExpert, setIsExpert] = useState(false);
-    const [expertToken, setExpertToken] = useState("");
     const [showMapPicker, setShowMapPicker] = useState(false);
+
 
     useEffect(() => {
         if (selectedLocation) {
@@ -41,9 +42,23 @@ export default function ObservationForm({ onObservationAdded, selectedLocation, 
 
         const role = localStorage.getItem("userRole");
         setIsExpert(role === 'expert');
-        const token = localStorage.getItem("expertToken");
-        if (token) setExpertToken(token);
     }, [selectedLocation]);
+
+    useEffect(() => {
+        const fetchLocationName = async () => {
+            if (lat && long && !isNaN(parseFloat(lat)) && !isNaN(parseFloat(long))) {
+                try {
+                    const res = await fetch(`http://localhost:8001/api/geocode?lat=${lat}&long=${long}`);
+                    const data = await res.json();
+                    if (data.location_name) setLocationName(data.location_name);
+                } catch (e) {
+                    console.error("Geocoding preview failed", e);
+                }
+            }
+        };
+        const timer = setTimeout(fetchLocationName, 1000);
+        return () => clearTimeout(timer);
+    }, [lat, long]);
 
     const handleCategorySelect = (cat: string) => {
         setCategory(cat);
@@ -60,6 +75,15 @@ export default function ObservationForm({ onObservationAdded, selectedLocation, 
         } else if (cat === "biodiversity") {
             defaults.species_richness = "15";
             defaults.canopy_cover = "75";
+        } else if (cat === "noise") {
+            defaults.db = "45";
+        } else if (cat === "waste") {
+            defaults.collection_efficiency = "85";
+        } else if (cat === "weather") {
+            defaults.temp = "28";
+            defaults.precip = "0";
+        } else if (cat === "radiation") {
+            defaults.uv_index = "4";
         }
         setParams(defaults);
         setStep(1);
@@ -94,13 +118,13 @@ export default function ObservationForm({ onObservationAdded, selectedLocation, 
             value: primaryValue,
             lat: parsedLat,
             long: parsedLong,
+            location_name: locationName,
             details: params,
-            is_expert: isExpert,
-            expert_token: isExpert ? expertToken : null
+            is_expert: isExpert
         };
 
         try {
-            const res = await fetch("http://localhost:8000/api/observe", {
+            const res = await fetch("http://localhost:8001/api/observe", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),
@@ -115,8 +139,6 @@ export default function ObservationForm({ onObservationAdded, selectedLocation, 
                 setLat("");
                 setLong("");
                 setLocationQuery("");
-            } else if (res.status === 401) {
-                alert("Security Violation: Invalid Expert Credentials. Data rejected.");
             } else {
                 const err = await res.json();
                 alert(`Submission Error: ${err.detail || 'Unknown error'}`);
@@ -142,6 +164,10 @@ export default function ObservationForm({ onObservationAdded, selectedLocation, 
                     { id: "water", label: "Hydrosphere", icon: Droplets, desc: "Water & Purity", color: "cyan" },
                     { id: "soil", label: "Lithosphere", icon: Mountain, desc: "Soil Composition", color: "emerald" },
                     { id: "biodiversity", label: "Biosphere", icon: Leaf, desc: "Species & Ecology", color: "lime" },
+                    { id: "noise", label: "Acoustics", icon: Activity, desc: "Noise Pollution", color: "orange" },
+                    { id: "waste", label: "Sanitation", icon: FlaskConical, desc: "Waste Management", color: "amber" },
+                    { id: "weather", label: "Meteorology", icon: CloudRain, desc: "Weather Patterns", color: "blue" },
+                    { id: "radiation", label: "Radiology", icon: ShieldCheck, desc: "UV & Radiation", color: "red" },
                 ].map((item) => (
                     <button
                         key={item.id}
@@ -182,6 +208,22 @@ export default function ObservationForm({ onObservationAdded, selectedLocation, 
                 { id: "canopy_cover", label: "Canopy Cover", unit: "%", icon: Wind },
                 { id: "biodiversity_index", label: "Biodiversity Index", unit: "Idx", icon: Gauge },
                 { id: "invasive_count", label: "Invasive Species", unit: "Count", icon: Activity },
+            ],
+            noise: [
+                { id: "db", label: "Noise Level", unit: "dB", icon: Activity },
+            ],
+            waste: [
+                { id: "collection_efficiency", label: "Collection Efficiency", unit: "%", icon: Activity },
+                { id: "recycling_rate", label: "Recycling Rate", unit: "%", icon: CheckCircle2 },
+            ],
+            weather: [
+                { id: "temp", label: "Temperature", unit: "°C", icon: Thermometer },
+                { id: "precip", label: "Precipitation", unit: "mm", icon: CloudRain },
+                { id: "wind_speed", label: "Wind Speed", unit: "km/h", icon: Wind },
+            ],
+            radiation: [
+                { id: "uv_index", label: "UV Index", unit: "Idx", icon: Gauge },
+                { id: "microsieverts", label: "Radiation (µSv/h)", unit: "µSv/h", icon: Activity },
             ]
         };
 
@@ -232,7 +274,8 @@ export default function ObservationForm({ onObservationAdded, selectedLocation, 
                 <span className="text-[10px] font-black uppercase text-slate-900 bg-slate-100 px-3 py-1 rounded-full">Coordinate Binding</span>
             </div>
 
-            <div className="space-y-4">
+            <div className="space-y-6">
+
                 <div className="relative group overflow-hidden rounded-2xl border-2 border-dashed border-slate-200 hover:border-slate-900 transition-all">
                     <button
                         type="button"
@@ -259,19 +302,34 @@ export default function ObservationForm({ onObservationAdded, selectedLocation, 
                             <span className="text-xs font-black uppercase tracking-widest text-slate-900 bg-white/80 backdrop-blur-sm px-3 py-1 rounded-full border border-white/50">
                                 {lat ? "Change Binding Node" : "Open Precision Map Picker"}
                             </span>
+                            {locationName && (
+                                <span className="text-[10px] font-black text-indigo-600 bg-indigo-50/80 backdrop-blur-sm px-3 py-1 rounded-full mt-2 border border-indigo-100 animate-in fade-in zoom-in duration-300">
+                                    {locationName}
+                                </span>
+                            )}
                             {lat && <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tighter bg-white/60 backdrop-blur-sm px-2 py-0.5 rounded-full mt-1 border border-white/50">GIS Lock: {lat}, {long}</span>}
                         </div>
                     </button>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 focus-within:bg-white focus-within:ring-2 focus-within:ring-slate-900 transition-all">
                         <span className="text-[10px] font-black text-slate-400 uppercase block mb-1">Bounded Latitude</span>
-                        <input value={lat} readOnly className="bg-transparent border-none outline-none font-bold text-slate-900 w-full cursor-not-allowed" placeholder="Select on map..." />
+                        <input
+                            value={lat}
+                            onChange={(e) => setLat(e.target.value)}
+                            className="bg-transparent border-none outline-none font-bold text-slate-900 w-full"
+                            placeholder="Type or select..."
+                        />
                     </div>
-                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 focus-within:bg-white focus-within:ring-2 focus-within:ring-slate-900 transition-all">
                         <span className="text-[10px] font-black text-slate-400 uppercase block mb-1">Bounded Longitude</span>
-                        <input value={long} readOnly className="bg-transparent border-none outline-none font-bold text-slate-900 w-full cursor-not-allowed" placeholder="Select on map..." />
+                        <input
+                            value={long}
+                            onChange={(e) => setLong(e.target.value)}
+                            className="bg-transparent border-none outline-none font-bold text-slate-900 w-full"
+                            placeholder="Type or select..."
+                        />
                     </div>
                 </div>
             </div>

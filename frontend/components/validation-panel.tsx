@@ -16,6 +16,7 @@ interface Observation {
     needs_review: boolean;
     validation_status: string;
     is_expert?: boolean;
+    outlier_score?: number;
     validation_report?: {
         satellite_value?: number;
         standards?: Record<string, { range: string; valid: boolean }>;
@@ -23,7 +24,9 @@ interface Observation {
         hitl_reason?: string;
         trust_level?: string;
         news_justification?: string;
+        external_meta?: any;
     };
+    location_name?: string;
 }
 
 export default function ValidationPanel({
@@ -54,7 +57,7 @@ export default function ValidationPanel({
         if (!observation) return;
         setUpdating(true);
         try {
-            const res = await fetch(`http://localhost:8000/api/observations/${observation.id}/validate?is_valid=${isValid}`, {
+            const res = await fetch(`http://localhost:8001/api/observations/${observation.id}/validate?is_valid=${isValid}`, {
                 method: 'PUT'
             });
             if (res.ok) {
@@ -163,8 +166,10 @@ export default function ValidationPanel({
                             <span className="font-mono text-xl text-indigo-700 font-black">{observation.value}</span>
                         </div>
                         <div className="bg-gray-50/80 p-3 rounded-xl border border-gray-100 transition-hover hover:border-indigo-100">
-                            <span className="text-[10px] uppercase text-gray-400 font-bold block mb-1 tracking-wider">Geocode</span>
-                            <span className="text-xs font-semibold text-gray-600">{observation.lat.toFixed(3)}, {observation.long.toFixed(3)}</span>
+                            <span className="text-[10px] uppercase text-gray-400 font-bold block mb-1 tracking-wider">Location</span>
+                            <span className="text-xs font-semibold text-gray-600 truncate block" title={`${observation.lat.toFixed(3)}, ${observation.long.toFixed(3)}`}>
+                                {observation.location_name || `${observation.lat.toFixed(3)}, ${observation.long.toFixed(3)}`}
+                            </span>
                         </div>
                         <div className={`p-3 rounded-xl border transition-all ${observation.is_expert ? "bg-emerald-50 border-emerald-100" : "bg-gray-50 border-gray-100"}`}>
                             <span className="text-[10px] uppercase text-gray-400 font-bold block mb-1 tracking-wider">Reporter Trust</span>
@@ -173,6 +178,20 @@ export default function ValidationPanel({
                                     {observation.is_expert ? "Verified Volunteer" : "Standard Citizen"}
                                 </span>
                                 {observation.is_expert && <ShieldCheck className="w-4 h-4 text-emerald-600" />}
+                            </div>
+                        </div>
+                        <div className={`p-3 rounded-xl border col-span-2 transition-all ${(observation.outlier_score || 0) > 80 ? "bg-emerald-50 border-emerald-100" : (observation.outlier_score || 0) > 50 ? "bg-amber-50 border-amber-100" : "bg-red-50 border-red-100"}`}>
+                            <div className="flex justify-between items-end mb-2">
+                                <span className="text-[10px] uppercase text-gray-400 font-bold block tracking-wider">AI Reliability Ensemble</span>
+                                <span className={`text-lg font-black ${(observation.outlier_score || 0) > 80 ? "text-emerald-700" : (observation.outlier_score || 0) > 50 ? "text-amber-700" : "text-red-700"}`}>
+                                    {Math.round(observation.outlier_score || 0)}%
+                                </span>
+                            </div>
+                            <div className="w-full bg-gray-200/50 h-2 rounded-full overflow-hidden">
+                                <div
+                                    className={`h-full transition-all duration-1000 ${(observation.outlier_score || 0) > 80 ? "bg-emerald-500" : (observation.outlier_score || 0) > 50 ? "bg-amber-500" : "bg-red-500"}`}
+                                    style={{ width: `${observation.outlier_score || 0}%` }}
+                                />
                             </div>
                         </div>
                     </div>
@@ -201,6 +220,92 @@ export default function ValidationPanel({
                             <Activity className="w-3 h-3" /> Cross-Reference Analysis
                         </h4>
                         <div className="space-y-3">
+                            {/* OpenAQ Station Log */}
+                            {report?.external_meta?.source === "OpenAQ" && (
+                                <div className="p-3 rounded-xl border border-indigo-100 bg-indigo-50/30 transition-all group animate-in slide-in-from-left duration-500">
+                                    <div className="flex justify-between items-start mb-1.5">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-2 h-2 rounded-full bg-indigo-500 animate-pulse" />
+                                            <span className="text-xs font-bold text-gray-700">OpenAQ Station Log</span>
+                                        </div>
+                                        <span className="text-[9px] font-black text-indigo-600 uppercase tracking-widest bg-white border border-indigo-100 px-2 py-0.5 rounded-full">
+                                            {report.external_meta.distance_km}km Away
+                                        </span>
+                                    </div>
+                                    <p className="text-[11px] font-black text-indigo-900 mb-1">
+                                        {report.external_meta.station}
+                                    </p>
+                                    <p className="text-[10px] text-indigo-400 leading-tight">
+                                        Direct ground-truth cross-reference from the closest official monitoring node.
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* iNaturalist Presence Log */}
+                            {report?.external_meta?.source === "iNaturalist" && (
+                                <div className="p-3 rounded-xl border border-emerald-100 bg-emerald-50/30 transition-all group animate-in slide-in-from-left duration-500">
+                                    <div className="flex justify-between items-start mb-1.5">
+                                        <div className="flex items-center gap-2">
+                                            <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                                            <span className="text-xs font-bold text-gray-700">iNaturalist Biological Log</span>
+                                        </div>
+                                        <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest bg-white border border-emerald-100 px-2 py-0.5 rounded-full">
+                                            {report.external_meta.local_sightings} Sightings
+                                        </span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-1 mb-1">
+                                        {report.external_meta.top_species?.map((s: string, i: number) => (
+                                            <span key={i} className="text-[9px] font-bold bg-white/80 py-0.5 px-2 rounded-md text-emerald-700 border border-emerald-50"># {s}</span>
+                                        ))}
+                                    </div>
+                                    <p className="text-[10px] text-emerald-400 leading-tight">
+                                        Verification supported by biodiversity data clusters from the global community.
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* WildTrax Consensus Log */}
+                            {report?.external_meta?.wildtrax_consensus && (
+                                <div className="p-3 rounded-xl border border-blue-100 bg-blue-50/30 transition-all group animate-in slide-in-from-left duration-500">
+                                    <div className="flex justify-between items-start mb-1.5">
+                                        <div className="flex items-center gap-2">
+                                            <ShieldCheck className="w-4 h-4 text-blue-500" />
+                                            <span className="text-xs font-bold text-gray-700">WildTrax Bio-Consensus</span>
+                                        </div>
+                                        <span className="text-[9px] font-black text-blue-600 uppercase tracking-widest bg-white border border-blue-100 px-2 py-0.5 rounded-full">
+                                            {Math.round(report.external_meta.wildtrax_consensus.consensus_score * 100)}% Match
+                                        </span>
+                                    </div>
+                                    <div className="flex flex-wrap gap-1 mb-1">
+                                        {report.external_meta.wildtrax_consensus.verified?.map((s: string, i: number) => (
+                                            <span key={i} className="text-[9px] font-bold bg-white/80 py-0.5 px-2 rounded-md text-blue-700 border border-blue-50"># {s}</span>
+                                        ))}
+                                    </div>
+                                    <p className="text-[10px] text-blue-400 leading-tight">
+                                        Ecological distribution validation via sensor network historical clusters.
+                                    </p>
+                                </div>
+                            )}
+
+                            {/* WildTrax Sensor Health */}
+                            {report?.external_meta?.wildtrax_sensor === "Passed" && (
+                                <div className="p-3 rounded-xl border border-slate-200 bg-slate-50/50 transition-all group">
+                                    <div className="flex justify-between items-center mb-1.5">
+                                        <div className="flex items-center gap-2">
+                                            <Database className="w-3.5 h-3.5 text-slate-500" />
+                                            <span className="text-xs font-bold text-gray-700">WildTrax Sensor Meta</span>
+                                        </div>
+                                        <div className="flex items-center gap-1 bg-emerald-500/10 px-2 py-0.5 rounded-full">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                                            <span className="text-[9px] font-black text-emerald-600 uppercase tracking-widest">Hardware Verified</span>
+                                        </div>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 leading-tight">
+                                        Signal-to-noise ratio and battery drift analytics within operational thresholds.
+                                    </p>
+                                </div>
+                            )}
+
                             {/* Open-Meteo */}
                             <div className="p-3 rounded-xl border border-transparent hover:border-indigo-50 hover:bg-indigo-50/20 transition-all group">
                                 <div className="flex justify-between items-center mb-1.5">

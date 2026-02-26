@@ -33,7 +33,7 @@ export default function VoiceInput({ onParsed }: { onParsed: (data: any) => void
             setIsProcessing(true);
 
             try {
-                const res = await fetch("http://localhost:8000/api/parse_voice", {
+                const res = await fetch("http://localhost:8001/api/parse_voice", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ text: transcript })

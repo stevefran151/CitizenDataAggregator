@@ -27,7 +27,7 @@ export default function TrendsPage() {
     const [data, setData] = useState<Observation[]>([]);
 
     useEffect(() => {
-        fetch("http://localhost:8000/api/v1/data")
+        fetch("http://localhost:8001/api/v1/data")
             .then((res) => res.json())
             .then((data) => setData(data));
     }, []);

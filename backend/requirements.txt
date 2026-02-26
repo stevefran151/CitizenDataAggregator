@@ -21,3 +21,4 @@ livekit-agents
 livekit-plugins-deepgram
 livekit-plugins-elevenlabs
 livekit-plugins-silero
+geopy

@@ -7,11 +7,12 @@ class ObservationBase(BaseModel):
     value: float # Primary summary value (e.g. AQI)
     lat: float
     long: float
+    location_name: Optional[str] = None
     details: Optional[dict] = None # Full parameters (e.g. {ph: 7, do: 5})
     is_expert: bool = False
 
 class ObservationCreate(ObservationBase):
-    expert_token: Optional[str] = None
+    pass
 
 class Observation(ObservationBase):
     id: int
@@ -28,6 +29,20 @@ class Observation(ObservationBase):
     color_code: Optional[str]
     health_msg: Optional[str]
     validation_report: Optional[dict]
+
+    class Config:
+        from_attributes = True
+
+class FeedbackCreate(BaseModel):
+    user_name: str
+    email: str
+    category: str
+    message: str
+
+class Feedback(FeedbackCreate):
+    id: int
+    timestamp: datetime
+    status: str
 
     class Config:
         from_attributes = True

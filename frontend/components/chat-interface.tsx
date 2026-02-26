@@ -14,6 +14,7 @@ interface Observation {
     is_valid: boolean;
     timestamp: string;
     source?: string;
+    location_name?: string;
 }
 
 export default function ChatInterface({ observation }: { observation?: Observation | null }) {
@@ -30,7 +31,7 @@ export default function ChatInterface({ observation }: { observation?: Observati
         setQuery("");
 
         try {
-            const res = await fetch("http://localhost:8000/api/chat", {
+            const res = await fetch("http://localhost:8001/api/chat", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
@@ -40,7 +41,8 @@ export default function ChatInterface({ observation }: { observation?: Observati
                         value: observation.value,
                         is_valid: observation.is_valid,
                         lat: observation.lat,
-                        long: observation.long
+                        long: observation.long,
+                        location: observation.location_name
                     } : {}
                 })
             });
@@ -59,8 +61,8 @@ export default function ChatInterface({ observation }: { observation?: Observati
                 <h3 className="font-semibold text-lg">AI Assistant</h3>
             </div>
             {observation && (
-                <div className="bg-blue-50 p-2 rounded mb-4 text-xs text-blue-800 border border-blue-100">
-                    Talking about: <span className="font-bold">{observation.type}</span> ({observation.value}) at {observation.lat.toFixed(2)}, {observation.long.toFixed(2)}
+                <div className="bg-blue-50 p-2 rounded mb-4 text-xs text-blue-800 border border-blue-100 italic">
+                    Analyzing: <span className="font-bold">{observation.type}</span> data at <span className="font-bold">{observation.location_name || `${observation.lat.toFixed(2)}, ${observation.long.toFixed(2)}`}</span>
                 </div>
             )}
             <div className="bg-gray-50 rounded-xl p-4 overflow-y-auto mb-4 border border-gray-100 space-y-3 text-center">

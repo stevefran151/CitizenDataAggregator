@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime, JSON
+from sqlalchemy import create_engine, Column, Integer, String, Float, Boolean, DateTime, JSON, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
@@ -23,6 +23,7 @@ class Observation(Base):
     value = Column(Float)
     lat = Column(Float)
     long = Column(Float)
+    location_name = Column(String, nullable=True) # human readable location name
     is_valid = Column(Boolean, default=True)
     timestamp = Column(DateTime, default=datetime.now)
     source = Column(String, default="manual") # manual or pdf_extraction
@@ -51,6 +52,33 @@ class Observation(Base):
     @property
     def health_msg(self):
         return self.quality_info.get("health_msg")
+
+class AcousticRecording(Base):
+    __tablename__ = "acoustic_recordings"
+
+    id = Column(Integer, primary_key=True, index=True)
+    title = Column(String)
+    audio_url = Column(String)
+    location_name = Column(String, nullable=True)
+    lat = Column(Float)
+    long = Column(Float)
+    timestamp = Column(DateTime, default=datetime.now)
+    duration_seconds = Column(Float)
+    
+    # Labeling data
+    annotations = Column(JSON, default=list) # [{user: "", label: "", confidence: 0.9, timestamp: ""}]
+    status = Column(String, default="pending") # pending, consensus_reached, expert_verified
+
+class Feedback(Base):
+    __tablename__ = "feedback"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_name = Column(String)
+    email = Column(String)
+    category = Column(String) # bug, feature_request, general_query
+    message = Column(Text)
+    timestamp = Column(DateTime, default=datetime.now)
+    status = Column(String, default="unread") # unread, read, addressed
 
 def init_db():
     Base.metadata.create_all(bind=engine)
